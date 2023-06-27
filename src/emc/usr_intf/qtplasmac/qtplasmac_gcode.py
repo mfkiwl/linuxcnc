@@ -85,6 +85,7 @@ currentMat = int(response.stdout.decode())
 response = RUN(['halcmd', 'getp', 'plasmac.max-offset'], capture_output = True)
 zMaxOffset = float(response.stdout.decode())
 RUN(['halcmd', 'setp', '{}'.format(convBlockPin), '0'])
+RUN(['halcmd', 'setp', 'plasmac.tube-cut', '0'])
 metric = ['mm', 4]
 imperial = ['in', 6]
 units, precision = imperial if ini.find('TRAJ', 'LINEAR_UNITS').lower() == 'inch' else metric
@@ -106,6 +107,7 @@ line = ''
 rapidLine = ''
 lastX = 0
 lastY = 0
+lastGcode = ''
 oBurnX = 0
 oBurnY = 0
 lineNum = 0
@@ -127,6 +129,7 @@ spotting = False
 offsetG4x = False
 zSetup = False
 zBypass = False
+tubeCut = False
 pathBlend = False
 convBlock = False
 filtered = False
@@ -139,6 +142,7 @@ errorMissMat = []
 errorNoMat = []
 errorBadMat = []
 errorTempMat = []
+errorTempParm = []
 errorNewMat = []
 errorEditMat = []
 errorWriteMat = []
@@ -509,7 +513,7 @@ def do_material_change():
 
 # check if material edit required
 def check_material_edit():
-    global lineNum, lineNumOrg, errorLines, tmpMatNum, tmpMatNam, codeError, errorNewMat, errorEditMat
+    global lineNum, lineNumOrg, errorLines, tmpMatNum, tmpMatNam, codeError, errorNewMat, errorEditMat, errorTempParm
     tmpMaterial = False
     newMaterial = []
     th = 0
@@ -517,8 +521,11 @@ def check_material_edit():
     cm = 1
     ca = 15
     cv = 100
+    if tubeCut:
+        ph = ch = fr = 0.0
     try:
-        if 'ph=' in line and 'pd=' in line and 'ch=' in line and 'fr=' in line:
+        if ('ph=' in line and 'pd=' in line and 'ch=' in line and 'fr=' in line) or \
+           ('pd=' in line and tubeCut):
             if '(o=0' in line:
                 tmpMaterial = True
                 nu = tmpMatNum
@@ -589,6 +596,10 @@ def check_material_edit():
                 codeError = True
                 errorEditMat.append(lineNum)
                 errorLines.append(lineNumOrg)
+        else:
+            codeError = True
+            errorTempParm.append(lineNum)
+            errorLines.append(lineNumOrg)
     except:
         codeError = True
         errorLines.append(lineNumOrg)
@@ -824,7 +835,6 @@ def message_set(msgType, msg):
 
 # get a dict of materials
 get_materials()
-
 # start processing the gcode file
 with open(inPath, 'r') as inCode:
     if ';qtplasmac filtered G-code file' in inCode.read():
@@ -902,6 +912,13 @@ with open(inPath, 'r') as inCode:
                     line = line[:1] + line[2:]
                 else:
                     break
+        if line[0] == 'g' and not line[2].isdigit():
+            if line[1] in '0123':
+                lastGcode = f'g{line[1]}'
+            else:
+                lastGcode = ''
+        if line[0] in 'xyzab' and lastGcode:
+            line = f'{lastGcode}{line}'
         # if incremental distance mode fix overburn coordinates
         if line[:2] in ['g0', 'g1'] and distMode == 91 and (oBurnX or oBurnY):
             line = fix_overburn_incremental_coordinates(line)
@@ -970,7 +987,7 @@ with open(inPath, 'r') as inCode:
             errorFirstMove.append(lineNum)
             errorLines.append(lineNumOrg)
         # are we scribing
-        if line.startswith('m3$1s'):
+        if line.startswith('m3$1s') and not tubeCut:
             if pierceOnly:
                 codeWarn = True
                 warnPierceScribe.append(lineNum)
@@ -1059,6 +1076,15 @@ with open(inPath, 'r') as inCode:
             else:
                 holeVelocity = float(line.split('=')[1])
             gcodeList.append(line)
+            continue
+        if line.startswith('#<tube-cut>=1'):
+            tubeCut = True
+            zBypass = True
+            RUN(['halcmd', 'setp', 'plasmac.tube-cut', '1'])
+            lineNum += 3
+            gcodeList.append(f';******')
+            gcodeList.append(line)
+            gcodeList.append(';tube cutting is experimental\n;******')
             continue
         # if material change
         if line.startswith('m190'):
@@ -1165,7 +1191,7 @@ with open(inPath, 'r') as inCode:
             gcodeList.append(line)
             continue
         # check feed rate
-        if 'f' in line:
+        if 'f' in line and not tubeCut:
             line = check_f_word(line)
         # restore velocity if required
         if holeActive:
@@ -1208,6 +1234,9 @@ if codeError or codeWarn:
         if errorTempMat:
             msg  = 'Error attempting to add a temporary material.\n'
             errorText += message_set(errorTempMat, msg)
+        if errorTempParm:
+            msg  = 'Parameter missing from temporary material.\n'
+            errorText += message_set(errorTempParm, msg)
         if errorNewMat:
             msg  = 'Cannot add new material, number is in use.\n'
             errorText += message_set(errorNewMat, msg)
