@@ -1,0 +1,4 @@
+loadrt hal_gpio inputs=GPIO17,GPIO18,GPIO19 outputs=GPIO20,GPIO21
+loadrt threads
+addf hal_gpio.read thread1
+addf hal_gpio.write thread1

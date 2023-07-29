@@ -39,14 +39,17 @@
 #include "rtapi_slab.h"  	/* kmalloc() */
 #include "hal.h"		/* HAL public API decls */
 #include <gpiod.h>
+#include <string.h>
 
 
 MODULE_AUTHOR("Andy Pugh");
 MODULE_DESCRIPTION("GPIO driver using gpiod / libgpiod");
 MODULE_LICENSE("GPL");
 
+// Probably enough, just to avoid krealloc every time we change "chips"
+#define MAX_CHIPS 8
 // There isn't really any limit
-#define MAX_CHAN 64
+#define MAX_CHAN 128
 
 char *inputs[MAX_CHAN];
 RTAPI_MP_ARRAY_STRING(inputs, MAX_CHAN, "list of pins to use for input");
@@ -67,16 +70,19 @@ typedef struct{
 } hal_gpio_hal_t;
     
 typedef struct {
-    hal_gpio_hal_t *hal;
-    struct gpiod_line *line;
-} hal_gpio_pin_t;
+	int num_lines;
+    hal_gpio_hal_t **hal;
+    struct gpiod_chip *chip;
+    struct gpiod_line_bulk *bulk;
+} hal_gpio_bulk_t;
 
 typedef struct {
-    int num_inputs;
-    int num_outputs;
-    struct gpiod_chip *gpiod_chip;
-    hal_gpio_pin_t *inputs;
-    hal_gpio_pin_t *outputs;
+	// Bulk line access has to all be to the same "chip" so we have an
+	// array of chps with their bulk line collections. 
+	int num_in_chips;
+	int num_out_chips;
+    hal_gpio_bulk_t in_chips[MAX_CHIPS];
+    hal_gpio_bulk_t out_chip[MAX_CHIPS];
 } hal_gpio_t;
 
 static int comp_id;
@@ -95,7 +101,10 @@ static void hal_gpio_write(void *arg, long period);
 
 int rtapi_app_main(void){
     int retval;
+    int i, c;
     char hal_name[HAL_NAME_LEN];
+    struct gpiod_line *temp_line;
+    struct gpiod_chip *temp_chip;
 
     comp_id = hal_init("hal_gpio");
     if (comp_id < 0) {
@@ -111,16 +120,31 @@ int rtapi_app_main(void){
         goto fail0;
     }
 
-    for (gpio->num_inputs = 0; inputs[gpio->num_inputs];gpio->num_inputs++) {}
-    gpio->inputs = (hal_gpio_pin_t *)rtapi_kmalloc(sizeof(hal_gpio_pin_t) * gpio->num_inputs, RTAPI_GFP_KERNEL);
-    for (gpio->num_outputs = 0; outputs[gpio->num_outputs];gpio->num_outputs++) {}
-    gpio->outputs = (hal_gpio_pin_t *)rtapi_kmalloc(sizeof(hal_gpio_pin_t) * gpio->num_outputs, RTAPI_GFP_KERNEL);
+	gpio->num_in_chips = -1;
+	gpio->num_out_chips = -1;
+    for (i = 0; inputs[i]; i++) {
+		temp_line = gpiod_line_find(inputs[i]);
+		if (temp_line <= 0) {
+			rtapi_print_msg(RTAPI_MSG_ERR, "The GPIO line %s can not be found\n", inputs[i]);
+			goto fail0;
+		}
+		temp_chip = gpiod_line_get_chip(temp_line);
+		rtapi_print("Chip %s\n", gpiod_chip_name(temp_chip));
+		for (c = 0; c < gpio->num_in_chips
+				&& strcmp(gpiod_chip_name(gpio->in_chips[c].chip), gpiod_chip_name(temp_chip)) == 0; c++){}
 
+		rtapi_print("so far c = %i\n", c);
+		if (c > gpio->num_in_chips){
+			gpio->in_chips[c].chip = temp_chip;
+			gpio->in_chips[c].num_lines = 0;
+			gpiod_line_bulk_init(gpio->in_chips[c].bulk);
+		}
+	}
+    /*
     for (int i = 0; i < gpio->num_inputs; i++){
 	gpio->inputs[i].line = gpiod_line_find(inputs[i]);
 	if (gpio->inputs[i].line <= 0) {
-	    rtapi_print_msg(RTAPI_MSG_ERR, "The GPIO line %s can not be found %p\n", inputs[i], gpio->inputs[i].line);
-	    goto fail0;
+
 	}
 	gpiod_line_request_input(gpio->inputs[i].line, "linuxcnc");
 	gpio->inputs[i].hal = hal_malloc(sizeof(hal_gpio_hal_t));
@@ -136,10 +160,10 @@ int rtapi_app_main(void){
 	gpio->outputs[i].hal = hal_malloc(sizeof(hal_gpio_hal_t));
 	retval = hal_pin_bit_newf(HAL_IN, &(gpio->outputs[i].hal->value), comp_id, "hal_gpio.%s.out", outputs[i]);
     }
-    
-    retval = rtapi_snprintf(hal_name, HAL_NAME_LEN, "hal_gpio.read");
+    */
+    rtapi_snprintf(hal_name, HAL_NAME_LEN, "hal_gpio.read");
     retval = hal_export_funct(hal_name, hal_gpio_read, gpio, 0, 0, comp_id);
-    retval = rtapi_snprintf(hal_name, HAL_NAME_LEN, "hal_gpio.write");
+    rtapi_snprintf(hal_name, HAL_NAME_LEN, "hal_gpio.write");
     retval = hal_export_funct(hal_name, hal_gpio_write, gpio, 0, 0, comp_id);
     if (retval < 0){
 	rtapi_print_msg(RTAPI_MSG_ERR, "hal_gpio: failed to export functions\n");
@@ -159,18 +183,14 @@ int rtapi_app_main(void){
 
 static void hal_gpio_read(void *arg, long period)
 {
-    hal_gpio_t *gpio = arg;
-    int i;
-    for (i = 0; i < gpio->num_inputs; i++){
-	*(gpio->inputs[i].hal->value) = gpiod_line_get_value(gpio->inputs[i].line);
-    }
+    //hal_gpio_t *gpio = arg;
+    //int i;
+
 }
 
 static void hal_gpio_write(void *arg, long period)
 {
-    hal_gpio_t *gpio = arg;
-    int i;
-    for (i = 0; i < gpio->num_outputs; i++){
-	gpiod_line_set_value(gpio->outputs[i].line, *(gpio->outputs[i].hal->value));
-    }
+   // hal_gpio_t *gpio = arg;
+   // int i;
+
 }
