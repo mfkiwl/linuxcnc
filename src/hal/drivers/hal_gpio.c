@@ -55,6 +55,20 @@ char *inputs[MAX_CHAN];
 RTAPI_MP_ARRAY_STRING(inputs, MAX_CHAN, "list of pins to use for input")
 char *outputs[MAX_CHAN];
 RTAPI_MP_ARRAY_STRING(outputs, MAX_CHAN, "list of pins to use for output")
+char *invert[MAX_CHAN];
+RTAPI_MP_ARRAY_STRING(invert, MAX_CHAN, "set as inverted")
+char *reset[MAX_CHAN];
+RTAPI_MP_ARRAY_STRING(reset, MAX_CHAN, "add to reset list")
+char *opendrain[MAX_CHAN];
+RTAPI_MP_ARRAY_STRING(opendrain, MAX_CHAN, "set OPEN_DRAIN flag")
+char *opensource[MAX_CHAN];
+RTAPI_MP_ARRAY_STRING(opensource, MAX_CHAN, "set OPEN_SOURCE flag")
+char *biasdisable[MAX_CHAN];
+RTAPI_MP_ARRAY_STRING(biasdisable, MAX_CHAN, "set BIAS_DISABLE flag")
+char *pulldown[MAX_CHAN];
+RTAPI_MP_ARRAY_STRING(pulldown, MAX_CHAN, "set BIAS_PULL_DOWN flag")
+char *pullup[MAX_CHAN];
+RTAPI_MP_ARRAY_STRING(pullup, MAX_CHAN, "set BIAS_PULL_UP flag")
 
 /***********************************************************************
 *                STRUCTURES AND GLOBAL VARIABLES                       *
@@ -67,6 +81,19 @@ RTAPI_MP_ARRAY_STRING(outputs, MAX_CHAN, "list of pins to use for output")
 typedef struct{
     hal_bit_t *value;
 } hal_gpio_hal_t;
+
+/* flags are defined such:
+ * bits 1 - 4 are gpiod flags
+ * OPEN_DRAIN		= BIT(0) - not currently supported
+ * OPEN_SOURCE		= BIT(1) - not currently supported
+ * BIAS_DISABLE 	= BIT(2) - not currently supported
+ * PULL_DOWN		= BIT(3) - not currently supported
+ * PULL_UP		= BIT(4) - not currently supported
+ *
+ * hal_gpio flags
+ * INVERT 		= BIT(5)
+ * RESET		= BIT(6) - not currently supported
+ */
 
 typedef struct {
     int num_lines;
@@ -100,6 +127,28 @@ static void hal_gpio_write(void *arg, long period);
 *                      SETUP AND EXIT CODE                             *
 ************************************************************************/
 
+int flags(char *name){
+    int f = 0;
+    int i;
+    for (i = 0; opendrain[i]; i++)
+	if (strcmp(name, opendrain[i]) == 0) f |= 0x1;
+    for (i = 0; opensource[i]; i++)
+	if (strcmp(name, opensource[i]) == 0) f |= 0x2;
+    for (i = 0; biasdisable[i]; i++)
+	if (strcmp(name, biasdisable[i]) == 0) f |= 0x4;
+    for (i = 0; pulldown[i]; i++)
+	if (strcmp(name, pulldown[i]) == 0) f |= 0x8;
+    for (i = 0; pullup[i]; i++)
+	if (strcmp(name, pullup[i]) == 0) f |= 0x10;
+    for (i = 0; invert[i]; i++)
+	if (strcmp(name, invert[i]) == 0) f |= 0x20;
+    for (i = 0; reset[i]; i++)
+	if (strcmp(name, reset[i]) == 0) f |= 0x40;
+    rtapi_print_msg(RTAPI_MSG_INFO,"line %s flags %02x\n", name, f);
+    return f;
+}
+
+
 int build_chips_collection(char *name, hal_gpio_bulk_t **ptr, int *count){
     int c;
     struct gpiod_chip *temp_chip;
@@ -131,7 +180,10 @@ int build_chips_collection(char *name, hal_gpio_bulk_t **ptr, int *count){
     rtapi_print_msg(RTAPI_MSG_INFO, "hal_gpio: adding IO line %s\n", name);
     temp_line = gpiod_chip_find_line((*ptr)[c].chip, name);
     (*ptr)[c].num_lines++;
-    (*ptr)[c].vals = rtapi_krealloc((*ptr)[c].vals, (*ptr)[c].num_lines * sizeof(int), RTAPI_GFP_LERNEL);
+    (*ptr)[c].flags = rtapi_krealloc((*ptr)[c].flags, (*ptr)[c].num_lines * sizeof(int), RTAPI_GFP_KERNEL);
+    (*ptr)[c].flags[(*ptr)[c].num_lines - 1] = flags(name);
+    gpiod_line_set_flags(temp_line, (*ptr)[c].flags);
+    (*ptr)[c].vals = rtapi_krealloc((*ptr)[c].vals, (*ptr)[c].num_lines * sizeof(int), RTAPI_GFP_KERNEL);
     gpiod_line_bulk_add((*ptr)[c].bulk, temp_line);
     
     return 0;
