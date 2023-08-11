@@ -66,12 +66,12 @@ RTAPI_MP_ARRAY_STRING(outputs, MAX_CHAN, "list of pins to use for output")
 
 typedef struct{
     hal_bit_t *value;
-    hal_bit_t *value_not;
 } hal_gpio_hal_t;
-    
+
 typedef struct {
     int num_lines;
     int *vals;
+    int *flags;
     hal_gpio_hal_t *hal;
     struct gpiod_chip *chip;
     struct gpiod_line_bulk *bulk;
@@ -82,8 +82,8 @@ typedef struct {
     // array of chips with their bulk line collections. 
     int num_in_chips;
     int num_out_chips;
-    hal_gpio_bulk_t in_chips[MAX_CHIPS];
-    hal_gpio_bulk_t out_chips[MAX_CHIPS];
+    hal_gpio_bulk_t *in_chips;
+    hal_gpio_bulk_t *out_chips;
 } hal_gpio_t;
 
 static int comp_id;
@@ -100,7 +100,7 @@ static void hal_gpio_write(void *arg, long period);
 *                      SETUP AND EXIT CODE                             *
 ************************************************************************/
 
-int build_chips_collection(char *name, hal_gpio_bulk_t *arr, int *count){
+int build_chips_collection(char *name, hal_gpio_bulk_t **ptr, int *count){
     int c;
     struct gpiod_chip *temp_chip;
     struct gpiod_line *temp_line;
@@ -111,23 +111,28 @@ int build_chips_collection(char *name, hal_gpio_bulk_t *arr, int *count){
 	    return -EINVAL;
     }
     temp_chip = gpiod_line_get_chip(temp_line);
-    for (c = 0; c < *count && strcmp(gpiod_chip_name(arr[c].chip), gpiod_chip_name(temp_chip)); c++){
+    for (c = 0; c < *count && strcmp(gpiod_chip_name((*ptr)[c].chip), gpiod_chip_name(temp_chip)); c++){
     }
     
     if (c >= *count){
 	    (*count)++;
-	    arr[c].chip = (struct gpiod_chip *)rtapi_kmalloc(sizeof(arr[c].chip), RTAPI_GFP_KERNEL);
-	    arr[c].chip = gpiod_line_get_chip(temp_line);
-	    rtapi_print_msg(RTAPI_MSG_INFO, "hal_gpio: added chip %s\n", gpiod_chip_name(arr[c].chip));
-	    arr[c].num_lines = 0;
-	    arr[c].bulk = (struct gpiod_line_bulk *)rtapi_kmalloc(sizeof(arr[c].bulk), RTAPI_GFP_KERNEL);
-	    gpiod_line_bulk_init(arr[c].bulk);
+	    rtapi_print("well, at least we get to the malloc\n");
+	    *ptr = rtapi_krealloc(*ptr, sizeof(hal_gpio_bulk_t) * (*count), RTAPI_GFP_KERNEL);
+	    rtapi_print("And even past\n");
+	    // We don't have the struct defintion in the header file. So I see no good option
+	    // But a bad option is to use a fixed size based on looking at the code
+	    (*ptr)[c].chip = rtapi_kmalloc(80, RTAPI_GFP_KERNEL);
+	    (*ptr)[c].chip = gpiod_line_get_chip(temp_line);
+	    rtapi_print_msg(RTAPI_MSG_INFO, "hal_gpio: added chip %s\n", gpiod_chip_name((*ptr)[c].chip));
+	    (*ptr)[c].num_lines = 0;
+	    (*ptr)[c].bulk = rtapi_kmalloc(sizeof(*(*ptr)[c].bulk), RTAPI_GFP_KERNEL);
+	    gpiod_line_bulk_init((*ptr)[c].bulk);
     }
     rtapi_print_msg(RTAPI_MSG_INFO, "hal_gpio: adding IO line %s\n", name);
-    temp_line = gpiod_chip_find_line(arr[c].chip, name);
-    arr[c].num_lines++;
-    arr[c].vals = rtapi_krealloc(arr[c].vals, arr[c].num_lines * sizeof(int), RTAPI_GFP_LERNEL);
-    gpiod_line_bulk_add(arr[c].bulk, temp_line);
+    temp_line = gpiod_chip_find_line((*ptr)[c].chip, name);
+    (*ptr)[c].num_lines++;
+    (*ptr)[c].vals = rtapi_krealloc((*ptr)[c].vals, (*ptr)[c].num_lines * sizeof(int), RTAPI_GFP_LERNEL);
+    gpiod_line_bulk_add((*ptr)[c].bulk, temp_line);
     
     return 0;
 }
@@ -145,7 +150,7 @@ int rtapi_app_main(void){
     }
 
     // allocate shared memory for the base struct
-    gpio = (hal_gpio_t *)rtapi_kmalloc(sizeof(hal_gpio_t), RTAPI_GFP_KERNEL);
+    gpio = rtapi_kmalloc(sizeof(hal_gpio_t), RTAPI_GFP_KERNEL);
     if (gpio == 0) {
         rtapi_print_msg(RTAPI_MSG_ERR,
                 "hal_gpio component: Out of Memory\n");
@@ -154,17 +159,15 @@ int rtapi_app_main(void){
 
     gpio->num_in_chips = 0;
     gpio->num_out_chips = 0;
-    for (i = 0; inputs[i] && i < 5; i++) {
-	retval = build_chips_collection(inputs[i], gpio->in_chips, &gpio->num_in_chips);
+    for (i = 0; inputs[i]; i++) {
+	retval = build_chips_collection(inputs[i], &gpio->in_chips, &gpio->num_in_chips);
 	if (retval < 0) goto fail0;
     }
     for (c = 0; c < gpio->num_in_chips; c++){
-rtapi_print("before request\n");
 	if (gpiod_line_request_bulk_input(gpio->in_chips[c].bulk, "linuxcnc") < 0){
 	    rtapi_print_msg(RTAPI_MSG_ERR, "hal_gpio: Failed to register input pin collection\n");
 	    goto fail0;
 	}
-rtapi_print("after request\n");
 	gpio->in_chips[c].hal = hal_malloc(gpio->in_chips[c].num_lines * sizeof(hal_gpio_hal_t));
 	for (i = 0; i < gpio->in_chips[c].num_lines; i++){
 	    line_name = gpiod_line_name(gpiod_line_bulk_get_line(gpio->in_chips[c].bulk, i));
@@ -177,8 +180,8 @@ rtapi_print("after request\n");
 	    
     }
     
-    for (i = 0; outputs[i] && i < 5; i++) {
-	retval = build_chips_collection(outputs[i], gpio->out_chips, &gpio->num_out_chips);
+    for (i = 0; outputs[i]; i++) {
+	retval = build_chips_collection(outputs[i], &gpio->out_chips, &gpio->num_out_chips);
 	if (retval < 0) goto fail0;
     }
     for (c = 0; c < gpio->num_out_chips; c++){
@@ -192,7 +195,7 @@ rtapi_print("after request\n");
 	    retval += hal_pin_bit_newf(HAL_IN, &(gpio->out_chips[c].hal[i].value), comp_id, "hal_gpio.%s-out", line_name);
 	}
 	if (retval < 0){
-	    rtapi_print_msg(RTAPI_MSG_ERR, "hal_gpio: Failed to allocate GPIO outpu HAL pins\n");
+	    rtapi_print_msg(RTAPI_MSG_ERR, "hal_gpio: Failed to allocate GPIO output HAL pins\n");
 	    goto fail0;
 	}
     }
@@ -209,10 +212,20 @@ rtapi_print("after request\n");
     return 0;
 
     fail0:
+    for (c = 0; c < gpio->num_in_chips; c++){
+	rtapi_kfree(gpio->in_chips[c].chip);
+	rtapi_kfree(gpio->in_chips[c].bulk);}
+    for (c = 0; c < gpio->num_out_chips; c++){
+	rtapi_kfree(gpio->out_chips[c].chip);
+	rtapi_kfree(gpio->out_chips[c].bulk);}
+    rtapi_kfree(gpio->in_chips);
+    rtapi_kfree(gpio->out_chips);
+    rtapi_kfree(gpio);
     hal_exit(comp_id);
     return -1;
 
 }
+
 /**************************************************************
 * REALTIME PORT READ/WRITE FUNCTION                                *
 **************************************************************/
@@ -240,3 +253,18 @@ static void hal_gpio_write(void *arg, long period)
 	gpiod_line_set_value_bulk(gpio->out_chips[c].bulk, gpio->out_chips[c].vals);
     }
 }
+
+void rtapi_app_exit(void) {
+    int c;
+    for (c = 0; c < gpio->num_in_chips; c++){
+	rtapi_kfree(gpio->in_chips[c].chip);
+	rtapi_kfree(gpio->in_chips[c].bulk);}
+    for (c = 0; c < gpio->num_out_chips; c++){
+	rtapi_kfree(gpio->out_chips[c].chip);
+	rtapi_kfree(gpio->out_chips[c].bulk);}
+    rtapi_kfree(gpio->in_chips);
+    rtapi_kfree(gpio->out_chips);
+    rtapi_kfree(gpio);
+    hal_exit(comp_id);
+}
+
