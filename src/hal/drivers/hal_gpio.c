@@ -150,7 +150,7 @@ int flags(char *name){
 
 int build_chips_collection(char *name, hal_gpio_bulk_t **ptr, int *count){
     int c;
-    static struct gpiod_chip *temp_chip;
+    struct gpiod_chip *temp_chip;
     struct gpiod_line *temp_line;
     
     temp_line = gpiod_line_find(name);
@@ -168,28 +168,25 @@ int build_chips_collection(char *name, hal_gpio_bulk_t **ptr, int *count){
 
     if (c >= *count){
 	    (*count)++;
-rtapi_print("*ptr is at %p\n", (*ptr));
 	    *ptr = rtapi_krealloc(*ptr, sizeof(hal_gpio_bulk_t) * (*count), RTAPI_GFP_KERNEL);
-rtapi_print("*ptr is at %p\n", (*ptr));
-	    (*ptr)[c].chip = gpiod_line_get_chip(temp_line);
-	    rtapi_print_msg(RTAPI_MSG_INFO, "hal_gpio: added chip %s index %i\n", gpiod_chip_name((*ptr)[c].chip), c);
+	    (*ptr)[c].chip = NULL;
+	    (*ptr)[c].flags = NULL;
+	    (*ptr)[c].vals = NULL;
 	    (*ptr)[c].num_lines = 0;
+	    (*ptr)[c].chip = gpiod_line_get_chip(temp_line);
 	    (*ptr)[c].bulk = rtapi_kmalloc(sizeof(*(*ptr)[c].bulk), RTAPI_GFP_KERNEL);
 	    gpiod_line_bulk_init((*ptr)[c].bulk);
+	    rtapi_print_msg(RTAPI_MSG_INFO, "hal_gpio: added chip %s index %i\n", gpiod_chip_name((*ptr)[c].chip), c);
     }
     rtapi_print_msg(RTAPI_MSG_INFO, "hal_gpio: adding IO line %s to chip %i\n", name, c);
     temp_line = gpiod_chip_find_line((*ptr)[c].chip, name);
     (*ptr)[c].num_lines++;
-rtapi_print("flags is at %p\n", (*ptr)[c].flags );
     (*ptr)[c].flags = rtapi_krealloc((*ptr)[c].flags, (*ptr)[c].num_lines * sizeof(int), RTAPI_GFP_KERNEL);
-rtapi_print("flags is at %p\n", (*ptr)[c].flags );
-    //(*ptr)[c].flags[(*ptr)[c].num_lines - 1] = flags(name);
+    (*ptr)[c].flags[(*ptr)[c].num_lines - 1] = flags(name);
     //gpiod_line_set_flags(temp_line, (*ptr)[c].flags);
-rtapi_print("vals is at %p\n", (*ptr)[c].vals );
     (*ptr)[c].vals = rtapi_krealloc((*ptr)[c].vals, (*ptr)[c].num_lines * sizeof(int), RTAPI_GFP_KERNEL);
-rtapi_print("vals is at %p\n", (*ptr)[c].vals );
+    (*ptr)[c].flags[(*ptr)[c].num_lines - 1] = 0;
     gpiod_line_bulk_add((*ptr)[c].bulk, temp_line);
-    //gpiod_chip_close(temp_chip);
 
     return 0;
 }
@@ -218,6 +215,8 @@ int rtapi_app_main(void){
 
     gpio->num_in_chips = 0;
     gpio->num_out_chips = 0;
+    gpio->in_chips = NULL; // so that realloc knows that they need malloc first time throigh
+    gpio->out_chips = NULL;
     for (i = 0; inputs[i]; i++) {
 	retval = build_chips_collection(inputs[i], &gpio->in_chips, &gpio->num_in_chips);
 	if (retval < 0) goto fail0;
@@ -273,11 +272,9 @@ int rtapi_app_main(void){
     fail0:
     for (c = 0; c < gpio->num_in_chips; c++){
 	gpiod_chip_close(gpio->in_chips[c].chip);
-	rtapi_kfree(gpio->in_chips[c].chip);
 	rtapi_kfree(gpio->in_chips[c].bulk);}
     for (c = 0; c < gpio->num_out_chips; c++){
 	gpiod_chip_close(gpio->out_chips[c].chip);
-	rtapi_kfree(gpio->out_chips[c].chip);
 	rtapi_kfree(gpio->out_chips[c].bulk);}
     rtapi_kfree(gpio->in_chips);
     rtapi_kfree(gpio->out_chips);
@@ -319,12 +316,14 @@ void rtapi_app_exit(void) {
     int c;
     for (c = 0; c < gpio->num_in_chips; c++){
 	gpiod_chip_close(gpio->in_chips[c].chip);
-	rtapi_kfree(gpio->in_chips[c].chip);
-	rtapi_kfree(gpio->in_chips[c].bulk);}
+	rtapi_kfree(gpio->in_chips[c].bulk);
+	rtapi_kfree(gpio->in_chips[c].vals);
+	rtapi_kfree(gpio->in_chips[c].flags);}
     for (c = 0; c < gpio->num_out_chips; c++){
 	gpiod_chip_close(gpio->out_chips[c].chip);
-	rtapi_kfree(gpio->out_chips[c].chip);
-	rtapi_kfree(gpio->out_chips[c].bulk);}
+	rtapi_kfree(gpio->out_chips[c].bulk);
+	rtapi_kfree(gpio->out_chips[c].vals);
+	rtapi_kfree(gpio->out_chips[c].flags);}
     rtapi_kfree(gpio->in_chips);
     rtapi_kfree(gpio->out_chips);
     rtapi_kfree(gpio);
