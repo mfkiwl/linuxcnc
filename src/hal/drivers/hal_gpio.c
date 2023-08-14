@@ -79,6 +79,7 @@ RTAPI_MP_ARRAY_STRING(pullup, MAX_CHAN, "set BIAS_PULL_UP flag")
 
 typedef struct{
     hal_bit_t *value;
+    hal_bit_t *value_not;
 } hal_gpio_hal_t;
 
 /* flags are defined such:
@@ -162,7 +163,7 @@ int build_chips_collection(char *name, hal_gpio_bulk_t **ptr, int *count){
     for (c = 0; c < *count 
 		&& (strcmp(gpiod_chip_name((*ptr)[c].chip), gpiod_chip_name(temp_chip))
 		// max of 64 lines per bulk, so carry on to another "chip" if full
-		||  (*ptr)[c].num_lines > 3);
+		||  (*ptr)[c].num_lines > 63);
 		c++){
     }
 
@@ -185,7 +186,6 @@ int build_chips_collection(char *name, hal_gpio_bulk_t **ptr, int *count){
     (*ptr)[c].flags[(*ptr)[c].num_lines - 1] = flags(name);
     //gpiod_line_set_flags(temp_line, (*ptr)[c].flags);
     (*ptr)[c].vals = rtapi_krealloc((*ptr)[c].vals, (*ptr)[c].num_lines * sizeof(int), RTAPI_GFP_KERNEL);
-    (*ptr)[c].flags[(*ptr)[c].num_lines - 1] = 0;
     gpiod_line_bulk_add((*ptr)[c].bulk, temp_line);
 
     return 0;
@@ -230,6 +230,7 @@ int rtapi_app_main(void){
 	for (i = 0; i < gpio->in_chips[c].num_lines; i++){
 	    line_name = gpiod_line_name(gpiod_line_bulk_get_line(gpio->in_chips[c].bulk, i));
 	    retval += hal_pin_bit_newf(HAL_OUT, &(gpio->in_chips[c].hal[i].value), comp_id, "hal_gpio.%s-in", line_name);
+	    retval += hal_pin_bit_newf(HAL_OUT, &(gpio->in_chips[c].hal[i].value_not), comp_id, "hal_gpio.%s-in-not", line_name);
 	}
 	if (retval < 0){
 	    rtapi_print_msg(RTAPI_MSG_ERR, "hal_gpio: Failed to allocate GPIO input HAL pins\n");
@@ -296,6 +297,7 @@ static void hal_gpio_read(void *arg, long period)
 	gpiod_line_get_value_bulk(gpio->in_chips[c].bulk, gpio->in_chips[c].vals);
 	for (i = 0; i < gpio->in_chips[c].num_lines; i++){
 	   *(gpio->in_chips[c].hal[i].value) = gpio->in_chips[c].vals[i];
+	   *(gpio->in_chips[c].hal[i].value_not) = ! gpio->in_chips[c].vals[i];
 	}
     }
 }
@@ -306,7 +308,11 @@ static void hal_gpio_write(void *arg, long period)
     int i, c;
     for (c = 0; c < gpio->num_out_chips; c++){
 	for (i = 0; i < gpio->out_chips[c].num_lines; i++){
-	   gpio->out_chips[c].vals[i] = *(gpio->out_chips[c].hal[i].value);
+	    if (gpio->out_chips[c].flags[i] & 0x20){
+		gpio->out_chips[c].vals[i] = ! *(gpio->out_chips[c].hal[i].value);
+	    } else {
+		gpio->out_chips[c].vals[i] = *(gpio->out_chips[c].hal[i].value);
+	    }
 	}
 	gpiod_line_set_value_bulk(gpio->out_chips[c].bulk, gpio->out_chips[c].vals);
     }
