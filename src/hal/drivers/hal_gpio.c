@@ -40,6 +40,7 @@
 #include "hal.h"		/* HAL public API decls */
 #include <gpiod.h>
 #include <string.h>
+#include "config.h"             /* includes the GPIOD version 105 = 1.5 */
 
 
 MODULE_AUTHOR("Andy Pugh");
@@ -184,7 +185,9 @@ int build_chips_collection(char *name, hal_gpio_bulk_t **ptr, int *count){
     (*ptr)[c].num_lines++;
     (*ptr)[c].flags = rtapi_krealloc((*ptr)[c].flags, (*ptr)[c].num_lines * sizeof(int), RTAPI_GFP_KERNEL);
     (*ptr)[c].flags[(*ptr)[c].num_lines - 1] = flags(name);
-    //gpiod_line_set_flags(temp_line, (*ptr)[c].flags);
+#if LIBGPIOD_VER >= 105
+    gpiod_line_set_flags(temp_line, (*ptr)[c].flags);
+#endif
     (*ptr)[c].vals = rtapi_krealloc((*ptr)[c].vals, (*ptr)[c].num_lines * sizeof(int), RTAPI_GFP_KERNEL);
     gpiod_line_bulk_add((*ptr)[c].bulk, temp_line);
 
