@@ -47,6 +47,8 @@ MODULE_AUTHOR("Andy Pugh");
 MODULE_DESCRIPTION("GPIO driver using gpiod / libgpiod");
 MODULE_LICENSE("GPL");
 
+static unsigned long ns2tsc_factor;
+#define ns2tsc(x) (((x) * (unsigned long long)ns2tsc_factor) >> 12)
 
 // There isn't really any limit except for in the MP_ARRAY macros. 
 #define MAX_CHAN 128
@@ -107,7 +109,8 @@ typedef struct {
 
 typedef struct {
     // Bulk line access has to all be to the same "chip" so we have an
-    // array of chips with their bulk line collections. 
+    // array of chips with their bulk line collections.
+    hal_u32_t *reset_ns;
     int num_in_chips;
     int num_out_chips;
     hal_gpio_bulk_t *in_chips;
@@ -116,6 +119,8 @@ typedef struct {
 
 static int comp_id;
 static hal_gpio_t *gpio;
+static int reset_active;
+static long long last_reset;
 
 /***********************************************************************
 *                  LOCAL FUNCTION DECLARATIONS                         *
@@ -123,6 +128,7 @@ static hal_gpio_t *gpio;
 
 static void hal_gpio_read(void *arg, long period);
 static void hal_gpio_write(void *arg, long period);
+static void hal_gpio_reset(void *arg, long period);
 
 /***********************************************************************
 *                      SETUP AND EXIT CODE                             *
@@ -144,7 +150,10 @@ int flags(char *name){
     for (i = 0; invert[i]; i++)
 	if (strcmp(name, invert[i]) == 0) f |= 0x20;
     for (i = 0; reset[i]; i++)
-	if (strcmp(name, reset[i]) == 0) f |= 0x40;
+	if (strcmp(name, reset[i]) == 0) {
+	    reset_active = 1;
+	    f |= 0x40;
+	}
     rtapi_print_msg(RTAPI_MSG_INFO,"line %s flags %02x\n", name, f);
     return f;
 }
@@ -200,7 +209,13 @@ int rtapi_app_main(void){
     char hal_name[HAL_NAME_LEN];
     const char *line_name;
 
-    rtapi_set_msg_level(5);
+#ifdef __KERNEL__
+    // this calculation fits in a 32-bit unsigned
+    // as long as CPUs are under about 6GHz
+    ns2tsc_factor = (cpu_khz << 6) / 15625ul;
+#else
+    ns2tsc_factor = 1ll<<12;
+#endif
     
     comp_id = hal_init("hal_gpio");
     if (comp_id < 0) {
@@ -263,9 +278,16 @@ int rtapi_app_main(void){
     }
 
     rtapi_snprintf(hal_name, HAL_NAME_LEN, "hal_gpio.read");
-    retval = hal_export_funct(hal_name, hal_gpio_read, gpio, 0, 0, comp_id);
+    retval += hal_export_funct(hal_name, hal_gpio_read, gpio, 0, 0, comp_id);
     rtapi_snprintf(hal_name, HAL_NAME_LEN, "hal_gpio.write");
-    retval = hal_export_funct(hal_name, hal_gpio_write, gpio, 0, 0, comp_id);
+    retval += hal_export_funct(hal_name, hal_gpio_write, gpio, 0, 0, comp_id);
+
+    if (reset_active){
+	gpio->reset_ns = hal_malloc(sizeof(hal_u32_t));
+	rtapi_snprintf(hal_name, HAL_NAME_LEN, "hal_gpio.reset");
+	retval += hal_param_u32_newf(HAL_RW, gpio->reset_ns, comp_id, "hal_gpio.reset_ns");
+	retval += hal_export_funct(hal_name, hal_gpio_reset, gpio, 0, 0, comp_id);
+    }
     if (retval < 0){
 	rtapi_print_msg(RTAPI_MSG_ERR, "hal_gpio: failed to export functions\n");
 	goto fail0;
@@ -317,6 +339,28 @@ static void hal_gpio_write(void *arg, long period)
 		gpio->out_chips[c].vals[i] = *(gpio->out_chips[c].hal[i].value);
 	    }
 	}
+	gpiod_line_set_value_bulk(gpio->out_chips[c].bulk, gpio->out_chips[c].vals);
+    }
+    // store the time (in CPU clocks) for the reset function
+    last_reset = rtapi_get_clocks();
+}
+
+static void hal_gpio_reset(void *arg, long period)
+{
+    hal_gpio_t *gpio = arg;
+    int i, c;
+    long long deadline;
+    for (c = 0; c < gpio->num_out_chips; c++){
+	for (i = 0; i < gpio->out_chips[c].num_lines; i++){
+	    if ((gpio->out_chips[c].flags[i] & 0x60) == 0x60){ // inverted and reset
+		gpio->out_chips[c].vals[i] = 1;
+	    } else if ((gpio->out_chips[c].flags[i] & 0x60) == 0x40){ // only reset
+		gpio->out_chips[c].vals[i] = 0;
+	    }
+	}
+	if (*gpio->reset_ns > period/4) *gpio->reset_ns = period/4;
+	deadline = last_reset + ns2tsc(*gpio->reset_ns);
+        while(rtapi_get_clocks() < deadline) {} // busy-wait!
 	gpiod_line_set_value_bulk(gpio->out_chips[c].bulk, gpio->out_chips[c].vals);
     }
 }
