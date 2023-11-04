@@ -62,9 +62,9 @@ def clear_tool_tips(W):
     'thc_enable','led_thc_up','led_thc_enabled','led_thc_down','led_thc_active']
 
     main_jog_widgets = [
-    'jogincrements','jog_slow','jog_z_minus','jog_z_plus','jog_x_minus',
-    'jog_x_plus','jog_a_plus','jog_a_minus','jog_y_plus','jog_y_minus',
-    'jog_b_minus','jog_b_plus']
+    'jogincrements','jog_slow','jog_minus_z','jog_plus_z','jog_minus_x',
+    'jog_plus_x','jog_plus_a','jog_minus_a','jog_plus_y','jog_minus_y',
+    'jog_minus_b','jog_plus_b','jog_minus_c','jog_plus_c']
 
     main_cut_rec_widgets = [
     'cut_rec_cancel','cut_rec_rev','cut_rec_speed','cut_rec_fwd','cut_rec_feed',
@@ -246,16 +246,18 @@ def set_tool_tips(P, W):
     # main_jog_widgets():
     W.jogincrements.setToolTip(_translate('ToolTips', 'Sets the jog increment'))
     W.jog_slow.setToolTip(_translate('ToolTips', 'Toggles the jog feed rate by a factor of 10'))
-    W.jog_a_minus.setToolTip(_translate('ToolTips', 'Jogs the A axis counter negative'))
-    W.jog_a_plus.setToolTip(_translate('ToolTips', 'Jogs the A axis positive'))
-    W.jog_b_minus.setToolTip(_translate('ToolTips', 'Jogs the B axis negative'))
-    W.jog_b_plus.setToolTip(_translate('ToolTips', 'Jogs the B axis positive'))
-    W.jog_x_minus.setToolTip(_translate('ToolTips', 'Jogs the X axis negative'))
-    W.jog_x_plus.setToolTip(_translate('ToolTips', 'Jogs the X axis positive'))
-    W.jog_y_minus.setToolTip(_translate('ToolTips', 'Jogs the Y axis negative'))
-    W.jog_y_plus.setToolTip(_translate('ToolTips', 'Jogs the Y axis positive'))
-    W.jog_z_minus.setToolTip(_translate('ToolTips', 'Jogs the Z axis negative'))
-    W.jog_z_plus.setToolTip(_translate('ToolTips', 'Jogs the Z axis positive'))
+    W.jog_minus_a.setToolTip(_translate('ToolTips', 'Jogs the A axis counter negative'))
+    W.jog_plus_a.setToolTip(_translate('ToolTips', 'Jogs the A axis positive'))
+    W.jog_minus_b.setToolTip(_translate('ToolTips', 'Jogs the B axis negative'))
+    W.jog_plus_b.setToolTip(_translate('ToolTips', 'Jogs the B axis positive'))
+    W.jog_minus_c.setToolTip(_translate('ToolTips', 'Jogs the C axis negative'))
+    W.jog_plus_c.setToolTip(_translate('ToolTips', 'Jogs the C axis positive'))
+    W.jog_minus_x.setToolTip(_translate('ToolTips', 'Jogs the X axis negative'))
+    W.jog_plus_x.setToolTip(_translate('ToolTips', 'Jogs the X axis positive'))
+    W.jog_minus_y.setToolTip(_translate('ToolTips', 'Jogs the Y axis negative'))
+    W.jog_plus_y.setToolTip(_translate('ToolTips', 'Jogs the Y axis positive'))
+    W.jog_minus_z.setToolTip(_translate('ToolTips', 'Jogs the Z axis negative'))
+    W.jog_plus_z.setToolTip(_translate('ToolTips', 'Jogs the Z axis positive'))
 
     # main_cut_rec_widgets
     W.cut_rec_cancel.setToolTip(_translate('ToolTips', 'Cancels cut recovery'))
@@ -286,6 +288,7 @@ def set_tool_tips(P, W):
     text1 = _translate('ToolTips', 'axis position')
     W.dro_a.setToolTip('{} A {}'.format(text0, text1))
     W.dro_b.setToolTip('{} B {}'.format(text0, text1))
+    W.dro_c.setToolTip('{} C {}'.format(text0, text1))
     W.dro_x.setToolTip('{} X {}'.format(text0, text1))
     W.dro_y.setToolTip('{} Y {}'.format(text0, text1))
     W.dro_z.setToolTip('{} Z {}'.format(text0, text1))
@@ -293,6 +296,7 @@ def set_tool_tips(P, W):
     text1 = _translate('ToolTips', 'axis')
     W.home_a.setToolTip('{} A {}'.format(text0, text1))
     W.home_b.setToolTip('{} B {}'.format(text0, text1))
+    W.home_c.setToolTip('{} C {}'.format(text0, text1))
     W.home_x.setToolTip('{} X {}'.format(text0, text1))
     W.home_y.setToolTip('{} Y {}'.format(text0, text1))
     W.home_z.setToolTip('{} Z {}'.format(text0, text1))
@@ -301,6 +305,7 @@ def set_tool_tips(P, W):
     text1 = _translate('ToolTips', 'axis')
     W.touch_a.setToolTip('{} A {}'.format(text0, text1))
     W.touch_b.setToolTip('{} B {}'.format(text0, text1))
+    W.touch_c.setToolTip('{} C {}'.format(text0, text1))
     W.touch_x.setToolTip('{} X {}'.format(text0, text1))
     W.touch_y.setToolTip('{} Y {}'.format(text0, text1))
     W.touch_z.setToolTip('{} Z {}'.format(text0, text1))

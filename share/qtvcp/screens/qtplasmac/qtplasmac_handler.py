@@ -169,6 +169,7 @@ class HandlerClass:
         KEYBIND.add_call('Key_Any', 'on_keycall_PAUSE')
         KEYBIND.add_call('Key_o', 'on_keycall_OPEN')
         KEYBIND.add_call('Key_l', 'on_keycall_LOAD')
+        KEYBIND.add_call('Key_j', 'on_keycall_JOINT')
         KEYBIND.add_call('Key_1', 'on_keycall_NUMBER', 1)
         KEYBIND.add_call('Key_Exclam', 'on_keycall_NUMBER', 1)
         KEYBIND.add_call('Key_2', 'on_keycall_NUMBER', 2)
@@ -202,7 +203,11 @@ class HandlerClass:
         KEYBIND.add_call('Key_Enter', 'on_keycall_RETURN')
         KEYBIND.add_call('Key_QuoteLeft', 'on_keycall_QUOTELEFT')
         KEYBIND.add_call('Key_AsciiTilde', 'on_keycall_QUOTELEFT')
-        self.axisList = [x.lower() for x in INFO.AVAILABLE_AXES]
+        self.axes = {'valid': [x.lower() for x in INFO.AVAILABLE_AXES]}
+        for axis in 'abc':
+            self.axes[axis] = []
+            for n in ['dro_0', 'dro_label_0', 'home_0', 'touch_0', 'jog_plus_0', 'jog_minus_0']:
+                self.axes[axis].append(n.replace('0', axis))
         self.systemList = ['G53','G54','G55','G56','G57','G58','G59','G59.1','G59.2','G59.3']
         self.slowJogFactor = 10
         self.jogFast = False
@@ -210,11 +215,10 @@ class HandlerClass:
         self.lastLoadedProgram = 'None'
         self.set_interlock_defaults()
         self.pausedValidList= []
-        self.jogButtonList = ['jog_x_plus', 'jog_x_minus', 'jog_y_plus', 'jog_y_minus', 'jog_z_plus', \
-                              'jog_z_minus', 'jog_a_plus', 'jog_a_minus', 'jog_b_plus', 'jog_b_minus']
+        self.jogButtonList = ['jog_plus_x', 'jog_minus_x', 'jog_plus_y', 'jog_minus_y', \
+                              'jog_plus_z', 'jog_minus_z', 'jog_plus_a', 'jog_minus_a', \
+                              'jog_plus_b', 'jog_minus_b', 'jog_plus_c', 'jog_minus_c']
         self.jogSyncList = []
-        self.axisAList = ['dro_a', 'dro_label_a', 'home_a', 'touch_a', 'jog_a_plus', 'jog_a_minus']
-        self.axisBList = ['dro_b', 'dro_label_b', 'home_b', 'touch_b', 'jog_b_plus', 'jog_b_minus']
         self.xMin = float(self.iniFile.find('AXIS_X', 'MIN_LIMIT'))
         self.xMax = float(self.iniFile.find('AXIS_X', 'MAX_LIMIT'))
         self.yMin = float(self.iniFile.find('AXIS_Y', 'MIN_LIMIT'))
@@ -2057,7 +2061,7 @@ class HandlerClass:
         if STATUS.is_joint_mode():
             self.kb_jog(state, self.coordinates.index(joint), direction, shift)
         else:
-            self.kb_jog(state, ['x','y','z','a','b'].index(joint), direction, shift)
+            self.kb_jog(state, ['x','y','z','a','b','c'].index(joint), direction, shift)
 
     def view_t_pressed(self):
         t = time.time() + 0.01
@@ -2372,7 +2376,7 @@ class HandlerClass:
 #########################################################################################################################
 # GENERAL FUNCTIONS #
 #########################################################################################################################
-# called by ScreenOptions, this function overrides ScreenOption's closeEvent
+    # called by ScreenOptions, this function overrides ScreenOption's closeEvent
     def closeEvent(self, event):
         O = self.w.screen_options
         if self.w.chk_exit_warning.isChecked() or not STATUS.is_interp_idle():
@@ -2522,12 +2526,12 @@ class HandlerClass:
         self.alwaysOnList = []
         self.machineOnList = []
         self.idleList = ['file_clear', 'file_open', 'file_reload', 'file_edit']
-        self.idleOnList = ['home_x', 'home_y', 'home_z', 'home_a', 'home_b', 'home_all']
-        self.idleHomedList = ['camera', 'laser', 'touch_x', 'touch_y', 'touch_z', 'touch_a', 'touch_b', 'touch_xy', \
+        self.idleOnList = ['home_x', 'home_y', 'home_z', 'home_a', 'home_b', 'home_c', 'home_all']
+        self.idleHomedList = ['camera', 'laser', 'touch_x', 'touch_y', 'touch_z', 'touch_a', 'touch_b', 'touch_c', 'touch_xy', \
                               'mdi_show', 'height_lower', 'height_raise', 'wcs_button', 'set_offsets']
         self.ccButton, self.otButton, self.ptButton, self.tpButton = '', '', '', ''
         self.ctButton, self.scButton, self.frButton, self.mcButton = '', '', '', ''
-        self.ovButton, self.llButton, self.tlButton, self.umButton = '', '', [], ''
+        self.ovButton, self.llButton, self.tlButton, self.umButton, self.jtButton = '', '', [], '', ''
         self.halTogglePins = {}
         self.halPulsePins = {}
         self.dualCodeButtons = {}
@@ -2870,26 +2874,30 @@ class HandlerClass:
         self.w.button_20.released.connect(lambda:self.user_button_released(20))
         self.w.cut_rec_speed.valueChanged.connect(lambda w:self.cutrec_speed_changed(w))
         self.w.kerf_width.valueChanged.connect(lambda w:self.cutrec_move_changed(w))
-        self.w.jog_x_plus.pressed.connect(lambda:self.gui_button_jog(1, 'x', 1))
-        self.w.jog_x_plus.released.connect(lambda:self.gui_button_jog(0, 'x', 1))
-        self.w.jog_x_minus.pressed.connect(lambda:self.gui_button_jog(1, 'x', -1))
-        self.w.jog_x_minus.released.connect(lambda:self.gui_button_jog(0, 'x', -1))
-        self.w.jog_y_plus.pressed.connect(lambda:self.gui_button_jog(1, 'y', 1))
-        self.w.jog_y_plus.released.connect(lambda:self.gui_button_jog(0, 'y', 1))
-        self.w.jog_y_minus.pressed.connect(lambda:self.gui_button_jog(1, 'y', -1))
-        self.w.jog_y_minus.released.connect(lambda:self.gui_button_jog(0, 'y', -1))
-        self.w.jog_z_plus.pressed.connect(lambda:self.gui_button_jog(1, 'z', 1))
-        self.w.jog_z_plus.released.connect(lambda:self.gui_button_jog(0, 'z', 1))
-        self.w.jog_z_minus.pressed.connect(lambda:self.gui_button_jog(1, 'z', -1))
-        self.w.jog_z_minus.released.connect(lambda:self.gui_button_jog(0, 'z', -1))
-        self.w.jog_a_plus.pressed.connect(lambda:self.gui_button_jog(1, 'a', 1))
-        self.w.jog_a_plus.released.connect(lambda:self.gui_button_jog(0, 'a', 1))
-        self.w.jog_a_minus.pressed.connect(lambda:self.gui_button_jog(1, 'a', -1))
-        self.w.jog_a_minus.released.connect(lambda:self.gui_button_jog(0, 'a', -1))
-        self.w.jog_b_plus.pressed.connect(lambda:self.gui_button_jog(1, 'b', 1))
-        self.w.jog_b_plus.released.connect(lambda:self.gui_button_jog(0, 'b', 1))
-        self.w.jog_b_minus.pressed.connect(lambda:self.gui_button_jog(1, 'b', -1))
-        self.w.jog_b_minus.released.connect(lambda:self.gui_button_jog(0, 'b', -1))
+        self.w.jog_plus_x.pressed.connect(lambda:self.gui_button_jog(1, 'x', 1))
+        self.w.jog_plus_x.released.connect(lambda:self.gui_button_jog(0, 'x', 1))
+        self.w.jog_minus_x.pressed.connect(lambda:self.gui_button_jog(1, 'x', -1))
+        self.w.jog_minus_x.released.connect(lambda:self.gui_button_jog(0, 'x', -1))
+        self.w.jog_plus_y.pressed.connect(lambda:self.gui_button_jog(1, 'y', 1))
+        self.w.jog_plus_y.released.connect(lambda:self.gui_button_jog(0, 'y', 1))
+        self.w.jog_minus_y.pressed.connect(lambda:self.gui_button_jog(1, 'y', -1))
+        self.w.jog_minus_y.released.connect(lambda:self.gui_button_jog(0, 'y', -1))
+        self.w.jog_plus_z.pressed.connect(lambda:self.gui_button_jog(1, 'z', 1))
+        self.w.jog_plus_z.released.connect(lambda:self.gui_button_jog(0, 'z', 1))
+        self.w.jog_minus_z.pressed.connect(lambda:self.gui_button_jog(1, 'z', -1))
+        self.w.jog_minus_z.released.connect(lambda:self.gui_button_jog(0, 'z', -1))
+        self.w.jog_plus_a.pressed.connect(lambda:self.gui_button_jog(1, 'a', 1))
+        self.w.jog_plus_a.released.connect(lambda:self.gui_button_jog(0, 'a', 1))
+        self.w.jog_minus_a.pressed.connect(lambda:self.gui_button_jog(1, 'a', -1))
+        self.w.jog_minus_a.released.connect(lambda:self.gui_button_jog(0, 'a', -1))
+        self.w.jog_plus_b.pressed.connect(lambda:self.gui_button_jog(1, 'b', 1))
+        self.w.jog_plus_b.released.connect(lambda:self.gui_button_jog(0, 'b', 1))
+        self.w.jog_minus_b.pressed.connect(lambda:self.gui_button_jog(1, 'b', -1))
+        self.w.jog_minus_b.released.connect(lambda:self.gui_button_jog(0, 'b', -1))
+        self.w.jog_plus_c.pressed.connect(lambda:self.gui_button_jog(1, 'c', 1))
+        self.w.jog_plus_c.released.connect(lambda:self.gui_button_jog(0, 'c', 1))
+        self.w.jog_minus_c.pressed.connect(lambda:self.gui_button_jog(1, 'c', -1))
+        self.w.jog_minus_c.released.connect(lambda:self.gui_button_jog(0, 'c', -1))
         self.w.cut_rec_fwd.pressed.connect(lambda:self.cutrec_motion(1))
         self.w.cut_rec_fwd.released.connect(lambda:self.cutrec_motion(0))
         self.w.cut_rec_rev.pressed.connect(lambda:self.cutrec_motion(-1))
@@ -3031,31 +3039,28 @@ class HandlerClass:
             self.CONV.conv_shape_request(self, self.w, 'conv_{}'.format(operation), True)
 
     def set_axes_and_joints(self):
-        kinematics = self.iniFile.find('KINS', 'KINEMATICS').lower().replace('=','').replace('trivkins','').replace(' ','') or None
-        #kinstype = None
-        self.coordinates = 'xyz'
-        if kinematics:
-            if 'kinstype' in kinematics:
-                #kinstype = kinematics.lower().replace(' ','').split('kinstype')[1]
-                if 'coordinates' in kinematics:
-                    kinematics = kinematics.lower().replace(' ','').split('kinstype')[0]
-            if 'coordinates' in kinematics:
-                self.coordinates = kinematics.split('coordinates')[1].lower()
-        else:
+        self.coordinates = 'xyz' # backup in case we cannot find valid coordinates
+        kinematics = self.iniFile.find('KINS', 'KINEMATICS').lower().split() or None
+        if not kinematics:
             head = _translate('HandlerClass', 'INI File Error')
             msg0  = _translate('HandlerClass', 'Error in [KINS]KINEMATICS in the INI file')
             msg1 = _translate('HandlerClass', 'reverting to default coordinates of xyz')
             STATUS.emit('error', linuxcnc.OPERATOR_ERROR, '{}:\n{}\n{}\n'.format(head, msg0, msg1))
-        # hide axis a if not being used
-        if 'a' not in self.axisList:
-            for i in self.axisAList:
-                self.w[i].hide()
-        # hide axis b if not being used
-        if 'b' not in self.axisList:
-            for i in self.axisBList:
-                self.w[i].hide()
+        else:
+            coords = [s for s in kinematics if 'coordinates' in s]
+            if coords:
+                self.coordinates = coords[0].split('=')[1].strip()
+            else:
+                coords = self.iniFile.find('KINS', 'COORDINATES').lower() or None
+                if coords:
+                    self.coordinates = coords
+        # hide axes a, b, and c if not being used
+        for axis in 'abc':
+            if axis not in self.axes['valid']:
+                for i in self.axes[axis]:
+                    self.w[i].hide()
         # setup home buttons
-        for axis in self.axisList:
+        for axis in self.axes['valid']:
             self.w['home_{}'.format(axis)].set_joint(self.coordinates.index(axis))
             self.w['home_{}'.format(axis)].set_joint_number(self.coordinates.index(axis))
         for joint in range(len(self.coordinates)):
@@ -3064,11 +3069,11 @@ class HandlerClass:
                 self.w.home_all.hide()
             # check if not joggable before homing
             elif self.iniFile.find('JOINT_{}'.format(joint), 'HOME_SEQUENCE').startswith('-'):
-                if 'jog_{}_plus'.format(self.coordinates[joint]) not in self.jogSyncList:
-                    self.jogSyncList.append('jog_{}_plus'.format(self.coordinates[joint]))
-                    self.jogSyncList.append('jog_{}_minus'.format(self.coordinates[joint]))
-                    self.jogButtonList.remove('jog_{}_plus'.format(self.coordinates[joint]))
-                    self.jogButtonList.remove('jog_{}_minus'.format(self.coordinates[joint]))
+                if 'jog_plus_{}'.format(self.coordinates[joint]) not in self.jogSyncList:
+                    self.jogSyncList.append('jog_plus_{}'.format(self.coordinates[joint]))
+                    self.jogSyncList.append('jog_minus_{}'.format(self.coordinates[joint]))
+                    self.jogButtonList.remove('jog_plus_{}'.format(self.coordinates[joint]))
+                    self.jogButtonList.remove('jog_minus_{}'.format(self.coordinates[joint]))
 
     def set_mode(self):
         block1 = ['arc_ok_high', 'arc_ok_high_lbl', 'arc_ok_low', 'arc_ok_low_lbl' ]
@@ -3201,7 +3206,7 @@ class HandlerClass:
             self.w.gcode_editor.editor.SendScintilla(QsciScintilla.SCI_SETEXTRADESCENT, 1)
             self.vkb_hide()
             self.w.chk_keyboard_shortcuts.setEnabled(True)
-        for axis in 'xyzab':
+        for axis in 'xyzabc':
             button = 'touch_{}'.format(axis)
             self.w[button].dialog_code = inputType
 
@@ -3416,8 +3421,10 @@ class HandlerClass:
             self.cameraOn = True
         elif self.w.preview_stack.currentIndex() == self.OFFSETS:
             self.button_active(self.ovButton)
-            buttonList = [button for button in self.idleHomedList if button not in ['touch_x', 'touch_y', 'touch_z', 'touch_a', 'touch_b', 'touch_xy', \
-            'mdi_show', 'wcs_button', 'set_offsets']]
+            buttonList = [button for button in self.idleHomedList if button not in ['touch_x', 'touch_y', 'touch_z', \
+                                                                                    'touch_a', 'touch_b', 'touch_c', \
+                                                                                    'touch_xy', 'mdi_show', 'wcs_button', \
+                                                                                    'set_offsets']]
             self.set_buttons_state([self.idleOnList, buttonList], False)
             self.w.jog_frame.setEnabled(False)
             self.w.run.setEnabled(False)
@@ -3480,8 +3487,8 @@ class HandlerClass:
                 self.jog_slow_pressed(True)
             self.w.jog_slider.setValue(self.jogPreManCut[1])
             self.w.jogincrements.setCurrentIndex(self.jogPreManCut[2])
-        self.w.jog_z_plus.setEnabled(state)
-        self.w.jog_z_minus.setEnabled(state)
+        self.w.jog_plus_z.setEnabled(state)
+        self.w.jog_minus_z.setEnabled(state)
         self.set_tab_jog_states(state)
 
     def set_tab_jog_states(self, state):
@@ -3564,6 +3571,23 @@ class HandlerClass:
                 STATUS.emit('update-machine-log', '"{}" Virtual Machine detected'.format(response.strip()), 'TIME')
         except:
             pass
+
+    def toggle_joint_mode(self):
+        if not STATUS.is_all_homed():
+            return
+        if hal.get_value('halui.mode.is-teleop'):
+            teleop = False
+        elif hal.get_value('halui.mode.is-joint'):
+            teleop = True
+        ACTION.cmd.teleop_enable(teleop)
+        for axis in self.axes['valid']:
+            self.w['touch_{}'.format(axis)].setEnabled(teleop)
+            self.w['dro_{}'.format(axis)].setEnabled(teleop)
+            self.w['dro_label_{}'.format(axis)].setProperty('homed', teleop)
+            self.w['dro_label_{}'.format(axis)].setStyle(self.w['dro_label_{}'.format(axis)].style())
+        time.sleep(0.1)
+        self.w.gcodegraphics.updateGL()
+        self.w.conv_preview.updateGL()
 
 
 #########################################################################################################################
@@ -3771,8 +3795,8 @@ class HandlerClass:
         self.cutType = 0
         self.single_cut_request = False
         self.oldFile = None
-        singleCodes = ['change-consumables', 'cut-type', 'framing', 'manual-cut', 'offsets-view', \
-                       'ohmic-test', 'probe-test', 'single-cut', 'torch-pulse', 'user-manual', 'latest-file']
+        singleCodes = ['change-consumables', 'cut-type', 'framing', 'manual-cut', 'offsets-view', 'ohmic-test', \
+                       'probe-test', 'single-cut', 'torch-pulse', 'user-manual', 'latest-file', 'toggle-joint']
         head = _translate('HandlerClass', 'User Button Error')
         for bNum in range(1,21):
             self.w['button_{}'.format(str(bNum))].setEnabled(False)
@@ -3992,6 +4016,9 @@ class HandlerClass:
                 self.umButton = 'button_{}'.format(str(bNum))
                 self.idleList.append(self.umButton)
                 self.w.webview.load(self.umUrl)
+            elif 'toggle-joint' in bCode:
+                self.jtButton = 'button_{}'.format(str(bNum))
+                self.idleHomedList.append(self.jtButton)
             else:
                 if 'dual-code' in bCode:
                     # incoming code is: "dual-code" ;; code1 ;; label1 ;; code2 ;; checked (optional = true)
@@ -4016,7 +4043,7 @@ class HandlerClass:
                     commands = bCode
                 for command in commands.split('\\'):
                     command = command.strip()
-                    if command and command[0].lower() in 'xyzabgmfsto' and command.replace(' ','')[1] in '0123456789<':
+                    if command and command[0].lower() in 'xyzabcgmfsto' and command.replace(' ','')[1] in '0123456789<':
                         if 'button_{}'.format(str(bNum)) not in self.idleHomedList:
                             self.idleHomedList.append('button_{}'.format(str(bNum)))
                     elif command and command[0] == '%':
@@ -4148,6 +4175,8 @@ class HandlerClass:
             else:
                 self.w.preview_stack.setCurrentIndex(self.prevPreviewIndex)
                 self.prevPreviewIndex = self.USER_MANUAL
+        elif 'toggle-joint' in commands.lower():
+            self.toggle_joint_mode()
         else:
             self.reloadRequired = False
             if 'dual-code' in commands:
@@ -4175,7 +4204,7 @@ class HandlerClass:
 
     # for G-code commands and external commands
     def user_button_command(self, bNum, command):
-        if command and command[0].lower() in 'xyzabgmfsto' and command.replace(' ','')[1] in '0123456789<':
+        if command and command[0].lower() in 'xyzabcgmfsto' and command.replace(' ','')[1] in '0123456789<':
             if '{' in command:
                 newCommand = subCommand = ''
                 for char in command:
@@ -5810,9 +5839,9 @@ class HandlerClass:
         with open(self.styleSheetFile, 'r') as set_style:
            self.w.setStyleSheet(set_style.read())
         # style some buttons
-        buttons = ['jog_x_minus', 'jog_x_plus', 'jog_y_minus', 'jog_y_plus',
-                   'jog_z_minus', 'jog_z_plus', 'jog_a_minus', 'jog_a_plus',
-                   'jog_b_minus', 'jog_b_plus',
+        buttons = ['jog_minus_x', 'jog_plus_x', 'jog_minus_y', 'jog_plus_y',
+                   'jog_minus_z', 'jog_plus_z', 'jog_minus_a', 'jog_plus_a',
+                   'jog_minus_b', 'jog_plus_b','jog_minus_c', 'jog_plus_c',
                    'cut_rec_n', 'cut_rec_ne', 'cut_rec_e', 'cut_rec_se',
                    'cut_rec_s', 'cut_rec_sw', 'cut_rec_w', 'cut_rec_nw',
                    'conv_line', 'conv_circle', 'conv_ellipse', 'conv_triangle',
@@ -5996,6 +6025,10 @@ class HandlerClass:
            self.w.file_reload.isEnabled():
             self.file_reload_clicked()
 
+    def on_keycall_JOINT(self, event, state, shift, cntrl):
+        if self.key_is_valid(event, state) and self.w.main_tab_widget.currentIndex() == self.MAIN:
+            self.toggle_joint_mode()
+
     def on_keycall_F12(self, event, state, shift, cntrl):
         if self.key_is_valid(event, state):
             self.STYLEEDITOR.load_dialog()
@@ -6076,6 +6109,21 @@ class HandlerClass:
                 self.kb_jog(state, self.coordinates.index('b'), -1, shift)
             else:
                 self.kb_jog(state, 4, -1, shift)
+
+#FIXME - keys for these jogs not defined yet
+    # def on_keycall_CPOS(self, event, state, shift, cntrl):
+    #     if self.jog_is_valid('c_plus', event):
+    #         if STATUS.is_joint_mode():
+    #             self.kb_jog(state, self.coordinates.index('c'), 1, shift)
+    #         else:
+    #             self.kb_jog(state, 4, 1, shift)
+
+    # def on_keycall_CNEG(self, event, state, shift, cntrl):
+    #     if self.jog_is_valid('c_minus', event):
+    #         if STATUS.is_joint_mode():
+    #             self.kb_jog(state, self.coordinates.index('c'), -1, shift)
+    #         else:
+    #             self.kb_jog(state, 4, -1, shift)
 
     def on_keycall_PLUS(self, event, state, shift, cntrl):
         if self.key_is_valid(event, state) and self.w.main_tab_widget.currentIndex() == self.MAIN and self.jogSlow and self.w.jog_slider.isEnabled():
