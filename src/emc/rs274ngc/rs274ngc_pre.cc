@@ -2656,7 +2656,7 @@ int Interp::on_abort(int reason, const char *message)
 // 1) checks if path is already the full path
 // 2) tries adding the INI defined program prefix to path
 // 3) tries adding the INI defined subroutine prefix to path
-// 4) tries adding the INI defined whizard prefix to path
+// 4) tries adding the INI defined wizard prefix to path
 FILE *Interp::find_ngc_file(setup_pointer settings,const char *basename, char *foundhere )
 {
     FILE *newFP = NULL;
