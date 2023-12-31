@@ -934,13 +934,19 @@ int Interp::init()
 	  _setup.wizard_root[0] = 0;
           if(NULL != (inistring = inifile.Find("WIZARD_ROOT", "WIZARD")))
           {
-	    logDebug("[WIZARD]WIZARD_ROOT:%s", inistring);
-            if (realpath(inistring, _setup.wizard_root) == NULL) {
+            char expandinistring[LINELEN];
+            if (inifile.TildeExpansion(inistring,expandinistring,sizeof(expandinistring))) {
+                   logDebug("TildeExpansion failed for: %s",inistring);
+            }
+            printf("Tried WHIZ ini:%s\n",expandinistring);
+            logDebug("[WIZARD]WIZARD_ROOT:%s", expandinistring);
+            if (realpath(expandinistring, _setup.wizard_root) == NULL) {
         	//realpath didn't find the file
-		logDebug("realpath failed to find wizard_root:%s:", inistring);
+            logDebug("realpath failed to find wizard_root:%s:", expandinistring);
             }
           }
-          logDebug("_setup.wizard_root:%s:", _setup.wizard_root);
+            printf("Tried WHIZ realpath:%s\n",_setup.wizard_root);
+           logDebug("_setup.wizard_root:%s:", _setup.wizard_root);
 
 	  _setup.program_prefix[0] = 0;
           if(NULL != (inistring = inifile.Find("PROGRAM_PREFIX", "DISPLAY")))
@@ -2723,6 +2729,7 @@ FILE *Interp::find_ngc_file(setup_pointer settings,const char *basename, char *f
     // Wiz directory already expands the '~' to user path
     if (!newFP) {
         int ret;
+        printf("W HIZ start path:%s\n",settings->wizard_root);
 
         // walks the directory hierarchy ? 
         ret = findFile(settings->wizard_root, tmpFileName, foundPlace);
